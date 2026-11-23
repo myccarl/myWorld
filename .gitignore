@@ -1,0 +1,28 @@
+# ---- 隐私：朋友名单、信件、链接清单（只在本机） ----
+friends/
+dist/
+
+# ---- 本机设置 ----
+.claude/settings.local.json
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# ---- 第三方原始素材（体积大，可以重新下载；Mixamo 原始 FBX 按条款不能分发） ----
+tools/blender/mixamo_source/
+tools/rocketbox/src/
+tools/sky_sources/
+tools/rock_sources/
+tools/backup/
+
+# ---- 开发工具依赖（npm install 重新装） ----
+tools/node_tools/node_modules/
+
+# ---- 截图、预览（可重新生成，体积大） ----
+tools/blender/previews/
+art/previews/
+
+# ---- Blender 自动备份 ----
+*.blend1
+*.blend2

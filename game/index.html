@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0b0b10">
+  <title>风停之前</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.min.js",
+        "three/addons/": "./vendor/three/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- 3D 模式：画布和触摸层（文字模式下隐藏） -->
+  <div id="world3d"></div>
+  <div id="hud3d">
+    <div id="stickBase3d" class="stick-base"><div id="stickKnob3d" class="stick-knob"></div></div>
+    <div class="hud3d-right">
+      <button id="interactBtn3d" class="hud-btn interact" type="button">交互</button>
+      <button id="runBtn3d" class="hud-btn run" type="button">跑</button>
+    </div>
+  </div>
+  <div id="loadBar3d" class="load-bar" hidden></div>
+
+  <div id="app" data-tone="dark">
+    <div id="bgA" class="bg"></div>
+    <div id="bgB" class="bg"></div>
+
+    <header id="topbar">
+      <button id="notebookBtn" class="pill-btn" type="button" hidden>笔记本</button>
+      <button id="pauseBtn" class="icon-btn" type="button" aria-label="暂停">Ⅱ</button>
+    </header>
+
+    <!-- 3D 自由行走时：左上角是当前提示，下方是没有放进世界里的选项 -->
+    <div id="roamCaption" hidden></div>
+    <div id="roamBar" hidden></div>
+    <div id="sitLine" hidden></div>
+
+    <main id="stage">
+      <div id="choices"></div>
+    </main>
+
+    <section id="textbox" hidden>
+      <div id="speaker"></div>
+      <p id="text"></p>
+      <span class="more" aria-hidden="true">▼</span>
+    </section>
+
+    <div id="toast" aria-live="polite"></div>
+    <div id="curtain"></div>
+
+    <div id="title" class="title-screen" hidden>
+      <div class="lamp" aria-hidden="true"></div>
+      <h1 id="titleName"></h1>
+      <p id="titleSub"></p>
+      <div id="titleButtons"></div>
+    </div>
+
+    <div id="menu" class="menu" hidden>
+      <div class="menu-panel" role="dialog" aria-label="暂停">
+        <h2>暂停</h2>
+        <button id="menuResume" type="button">继续</button>
+        <button id="menuSpeed" type="button"></button>
+        <button id="menuAssist" type="button"></button>
+        <button id="menuMode" type="button"></button>
+        <button id="menuShake" type="button"></button>
+        <button id="menuSound" type="button"></button>
+        <button id="menuTitle" type="button">回到标题</button>
+        <button id="menuClear" type="button" class="danger"></button>
+      </div>
+    </div>
+  </div>
+  <noscript>需要开启 JavaScript 才能游玩。</noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

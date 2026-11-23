@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>人物对比（开发用，不发布）</title>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }
+</script>
+<style>html,body{margin:0;background:#888;overflow:hidden}#t{position:fixed;left:8px;top:6px;font:14px sans-serif;color:#fff;text-shadow:0 1px 2px #000}</style>
+</head>
+<body>
+<div id="t"></div>
+<script type="module">
+// 开发用：旧人物（MPFB）和 Rocketbox 新人物并排，同一套动作。 ?clip=walk|jog|run|idle|sit|talk…  &cam=face|full|side
+import * as THREE from 'three';
+import { loadGltfCharacter, SPEEDS } from './js/world/character.js';
+
+const q = new URLSearchParams(location.search);
+const clip = q.get('clip') || 'walk';
+const camMode = q.get('cam') || 'full';
+const height = Number(q.get('h')) || 1.76;
+const framing = height / 1.76;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.9;
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9aa6b0);
+scene.add(new THREE.HemisphereLight(0xcfdcea, 0x5a5048, 1.6));
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.2);
+sun.position.set(-3, 6, 4); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4 });
+scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x6d6658, roughness: 0.95 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const camera = new THREE.PerspectiveCamera(camMode === 'face' ? 22 : 35, innerWidth / innerHeight, 0.05, 100);
+
+const list = (q.get('m') || 'townsfolk_a,rb_gardener,player_m,rb_male_02').split(',');
+const chars = [];
+for (const [i, m] of list.entries()) {
+  const ch = await loadGltfCharacter(`assets/characters/${m}.glb`, { height, castShadow: true });
+  const gap = q.has('h') ? (camMode === 'face' ? 0.54 : camMode === 'side' ? 1.52 : 1.05) * framing : 1.1;
+  ch.object.position.x = (i - (list.length - 1) / 2) * gap;
+  ch.heading = camMode === 'side' ? Math.PI / 2 : (camMode === 'back' ? 0 : Math.PI); // 游戏约定面朝 -Z
+  scene.add(ch.object);
+  chars.push(ch);
+}
+const loco = SPEEDS[clip];
+for (const ch of chars) { if (!loco) ch.play(clip); }
+document.querySelector('#t').textContent = list.join(' | ') + '  — ' + clip;
+const look = new THREE.Vector3(0, camMode === 'face' ? 1.6 : 1.0, 0);
+if (camMode === 'face') camera.position.set(0, 1.62, 4.2);
+else if (camMode === 'side') camera.position.set(0.3, 1.1, 5.2);
+else camera.position.set(0, 1.25, 5.0);
+camera.lookAt(look);
+if (q.has('h')) {
+  const close = camMode === 'face';
+  camera.position.set(0, (close ? 1.59 : 1.02) * framing, (close ? 1.65 : 3.45) * framing);
+  camera.lookAt(0, (close ? 1.53 : .87) * framing, 0);
+}
+
+const clock = new THREE.Clock();
+function tick() {
+  const dt = Math.min(0.05, clock.getDelta());
+  for (const ch of chars) { if (loco) ch.locomote(loco); ch.update(dt); }
+  renderer.render(scene, camera);
+}
+if (q.has('phase') || q.has('time')) {
+  for (const ch of chars) {
+    if (loco) {
+      ch.locomote(loco); ch.update(.3);
+      ch.phase = Number(q.get('phase')); ch.update(0);
+    } else ch.update(Number(q.get('time')) || .75);
+  }
+  renderer.render(scene, camera);
+} else renderer.setAnimationLoop(tick);
+window.__tick = tick;
+window.__chars = chars;
+</script>
+</body>
+</html>

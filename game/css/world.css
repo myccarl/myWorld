@@ -1,0 +1,199 @@
+/* 3D 世界的界面：画布、虚拟摇杆、按钮、调试信息 */
+
+:root {
+  --font: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --edge: 24px;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #c9d6df;
+  font-family: var(--font);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+#world {
+  position: fixed;
+  inset: 0;
+  height: 100vh;
+  height: 100dvh;
+}
+#world canvas { display: block; }
+
+/* 整个屏幕接收触摸；禁止浏览器的滚动、缩放和长按菜单 */
+#hud {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* ---------- 虚拟摇杆：跟手出现 ---------- */
+.stick-base {
+  position: fixed;
+  width: 120px;
+  height: 120px;
+  margin: -60px 0 0 -60px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+.stick-base.active { opacity: 1; }
+.stick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transform: translate(-50%, -50%);
+}
+
+/* ---------- 右下按钮 ---------- */
+.hud-right {
+  position: fixed;
+  right: max(var(--edge), env(safe-area-inset-right));
+  bottom: max(var(--edge), env(safe-area-inset-bottom));
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+.hud-btn {
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  background: rgba(30, 36, 44, 0.35);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  letter-spacing: 0.1em;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  touch-action: none;
+}
+.hud-btn.interact { width: 76px; height: 76px; order: 2; }
+.hud-btn.run { width: 60px; height: 60px; margin-bottom: 70px; }
+.hud-btn.on, .hud-btn:active { background: rgba(255, 207, 138, 0.55); }
+
+.hint {
+  position: fixed;
+  left: 50%;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(30, 36, 44, 0.35);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ---------- 画质切换（测试页用） ---------- */
+.quality {
+  position: fixed;
+  z-index: 3;
+  right: max(12px, env(safe-area-inset-right));
+  top: max(12px, env(safe-area-inset-top));
+  display: flex;
+  gap: 6px;
+}
+.quality button {
+  min-width: 48px;
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(30, 36, 44, 0.35);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+}
+.quality button.on { background: rgba(255, 207, 138, 0.6); color: #222; }
+
+.debug {
+  position: fixed;
+  z-index: 3;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(6px, env(safe-area-inset-bottom));
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #9f9;
+  font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+  pointer-events: none;
+}
+
+/* ---------- 时段切换（测试页用） ---------- */
+.times {
+  position: fixed;
+  z-index: 3;
+  left: max(12px, env(safe-area-inset-left));
+  top: max(12px, env(safe-area-inset-top));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: calc(100% - 200px);
+}
+.times button {
+  min-width: 44px;
+  min-height: 34px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(30, 36, 44, 0.35);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+}
+.times button.on { background: rgba(255, 207, 138, 0.7); color: #222; }
+
+/* 加载进度：顶部一条细线 */
+.load-bar {
+  --p: 0;
+  position: fixed;
+  z-index: 4;
+  left: 0;
+  top: 0;
+  height: 3px;
+  width: calc(var(--p) * 100%);
+  background: #ffcf8a;
+  transition: width 0.2s;
+}
+
+.w-toast {
+  position: fixed;
+  z-index: 3;
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(30, 36, 44, 0.6);
+  color: #fff;
+  font-size: 15px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.w-toast.show { opacity: 1; }
+
+@media (orientation: portrait) {
+  .hint { display: none; }
+  .times { max-width: calc(100% - 24px); top: max(64px, calc(env(safe-area-inset-top) + 56px)); }
+}

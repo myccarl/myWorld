@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>树木生成（开发用，不发布）</title>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }
+</script>
+</head>
+<body style="background:#222;color:#ddd;font:14px sans-serif">
+<pre id="log">生成中…</pre>
+<script type="module">
+// 开发用：用 EZ-Tree（MIT）生成几种树和灌木，降低面数，导出只有几何的 glb + 共用的贴图（WebP），存到 tools/generated/。
+// 发布打包会排除这个页面和 _tmp_tools/。
+import * as THREE from 'three';
+import { Tree } from './_tmp_tools/ez-tree.es.js';
+import { GLTFExporter } from './_tmp_tools/GLTFExporter.js';
+
+const log = (s) => { document.querySelector('#log').textContent += '\n' + s; };
+// 名字, 预设, 种子, 改动
+const SPECS = [
+  ['pine_a', 'Pine Medium', 101, { children0: 38, leaves: 0.55, sec: [7, 5, 4, 3], seg: [6, 4, 3, 3] }],
+  ['pine_b', 'Pine Medium', 2207, { children0: 34, leaves: 0.55, sec: [7, 5, 4, 3], seg: [6, 4, 3, 3] }],
+  ['pine_c', 'Pine Small', 433, { children0: 30, leaves: 0.6, sec: [6, 5, 4, 3], seg: [6, 4, 3, 3] }],
+  ['oak_a', 'Oak Medium', 5, { leaves: 0.45, sec: [7, 5, 4, 3], seg: [6, 4, 3, 3] }],
+  ['oak_b', 'Oak Small', 77, { leaves: 0.55, sec: [7, 5, 4, 3], seg: [6, 4, 3, 3] }],
+  ['bush_a', 'Bush 1', 9, { leaves: 0.45, sec: [5, 4, 3, 3], seg: [5, 3, 3, 3] }],
+  ['bush_b', 'Bush 2', 31, { leaves: 0.7, sec: [5, 4, 3, 3], seg: [5, 3, 3, 3] }]
+];
+
+// 远处用的简化版（同一个种子，叶片和分段少很多）：名字加 _lod
+const LOD = new URLSearchParams(location.search).has('lod');
+if (LOD) {
+  SPECS.splice(0, SPECS.length,
+    ['pine_a_lod', 'Pine Medium', 101, { children0: 38, leaves: 0.16, sec: [4, 3, 3, 3], seg: [4, 3, 3, 3] }],
+    ['pine_b_lod', 'Pine Medium', 2207, { children0: 34, leaves: 0.16, sec: [4, 3, 3, 3], seg: [4, 3, 3, 3] }],
+    ['pine_c_lod', 'Pine Small', 433, { children0: 30, leaves: 0.18, sec: [4, 3, 3, 3], seg: [4, 3, 3, 3] }],
+    ['oak_b_lod', 'Oak Small', 77, { leaves: 0.16, sec: [4, 3, 3, 3], seg: [4, 3, 3, 3] }]
+  );
+}
+const tris = (g) => (g.index ? g.index.count : g.attributes.position.count) / 3;
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const save = (name, body) => fetch('/__save/' + name, { method: 'POST', body });
+const savedTex = new Set();
+async function saveTex(tex, name, size = 512) {
+  if (!tex || !tex.image || savedTex.has(name)) return;
+  savedTex.add(name);
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  c.getContext('2d').drawImage(tex.image, 0, 0, size, size);
+  const blob = await new Promise((r) => c.toBlob(r, 'image/webp', 0.86));
+  await save(name + '.webp', blob);
+  log('  贴图 ' + name + '.webp ' + Math.round(blob.size / 1024) + ' KB');
+}
+
+const results = [];
+for (const [name, preset, seed, cut] of SPECS) {
+  const tree = new Tree();
+  tree.loadPreset(preset);
+  const o = tree.options;
+  o.seed = seed;
+  if (cut.children0) o.branch.children[0] = Math.min(o.branch.children[0], cut.children0);
+  for (let i = 0; i < 4; i++) {
+    o.branch.sections[i] = Math.min(o.branch.sections[i], cut.sec[i]);
+    o.branch.segments[i] = Math.min(o.branch.segments[i], cut.seg[i]);
+  }
+  o.leaves.count = Math.max(1, Math.round(o.leaves.count * cut.leaves));
+  o.leaves.size *= 1 / Math.sqrt(cut.leaves) * 0.92;
+  tree.generate();
+  await wait(500);
+  const barkKey = 'bark_' + o.bark.type, leafKey = 'leaf_' + o.leaves.type;
+  const meshes = [];
+  tree.traverse((m) => { if (m.isMesh) meshes.push(m); });
+  let total = 0;
+  for (const [i, m] of meshes.entries()) {
+    const old = m.material;
+    if (i === 0) {
+      await saveTex(old.map, barkKey);
+      await saveTex(old.normalMap, barkKey + '_n');
+    } else {
+      await saveTex(old.map, leafKey);
+    }
+    total += tris(m.geometry);
+    m.material = new THREE.MeshStandardMaterial({ name: i === 0 ? barkKey : leafKey, side: i === 0 ? THREE.FrontSide : THREE.DoubleSide });
+  }
+  const box = new THREE.Box3().setFromObject(tree);
+  const glb = await new GLTFExporter().parseAsync(tree, { binary: true });
+  await save(name + '.glb', glb);
+  const h = box.max.y - box.min.y;
+  results.push({ name, tris: total, height: +h.toFixed(1), kb: Math.round(glb.byteLength / 1024), bark: barkKey, leaf: leafKey });
+  log(`${name}: ${total} 面，高 ${h.toFixed(1)}，${Math.round(glb.byteLength / 1024)} KB（${barkKey} / ${leafKey}）`);
+}
+window.__treeResults = results;
+log('完成');
+</script>
+</body>
+</html>

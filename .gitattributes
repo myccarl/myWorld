@@ -1,0 +1,7 @@
+# 统一用 LF 换行（.sh 脚本在 Windows 上也能跑）；二进制文件 git 自动识别
+* text=auto eol=lf
+*.glb binary
+*.blend binary
+*.webp binary
+*.png binary
+*.jpg binary

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#c9d6df">
+  <title>风停之前 · 3D 测试</title>
+  <link rel="stylesheet" href="css/world.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.min.js",
+        "three/addons/": "./vendor/three/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="world"></div>
+
+  <div id="hud">
+    <div id="stickBase" class="stick-base"><div id="stickKnob" class="stick-knob"></div></div>
+    <div class="hud-right">
+      <button id="interactBtn" class="hud-btn interact" type="button">交互</button>
+      <button id="runBtn" class="hud-btn run" type="button">跑</button>
+    </div>
+    <div class="hint">左半屏：移动　右半屏拖动：转镜头　电脑：WASD · Shift 跑 · E 交互</div>
+  </div>
+
+  <div id="loadBar" class="load-bar" hidden></div>
+  <div id="times" class="times"></div>
+  <div id="quality" class="quality"></div>
+  <div id="debug" class="debug" hidden></div>
+  <div id="wToast" class="w-toast"></div>
+
+  <noscript>需要开启 JavaScript。</noscript>
+  <script type="module" src="js/world/test_main.js"></script>
+</body>
+</html>

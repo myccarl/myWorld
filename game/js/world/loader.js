@@ -22,6 +22,7 @@
 
 import * as THREE from 'three';
 import { tuneMaterial } from './realism.js';
+import { finishTownSurfaces, loadCoastTextures } from './coast_surface.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'; // 压缩过的 glb（tools/compress_glb.mjs）要用它解压
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -67,19 +68,18 @@ function toLambert(m, cache) {
   return l;
 }
 
-export function loadWorld(url, { onProgress, lambert = true, castShadow = false, receiveShadow = false } = {}) {
-  return new Promise((resolve, reject) => {
-    new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).load(
-      url,
-      (gltf) => resolve(processWorld(gltf.scene, { lambert, castShadow, receiveShadow })),
-      (e) => { if (onProgress && e.total) onProgress(e.loaded / e.total); },
-      reject
-    );
-  });
+export async function loadWorld(url, { onProgress, lambert = true, castShadow = false, receiveShadow = false, architectureShadows = false } = {}) {
+  const loader=new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  const [gltf,coastTextures]=await Promise.all([
+    loader.loadAsync(url,e=>{if(onProgress&&e.total)onProgress(e.loaded/e.total);}),
+    !lambert && /(?:^|\/)town\.glb(?:[?#]|$)/.test(url) ? loadCoastTextures() : null
+  ]);
+  return processWorld(gltf.scene, {lambert,castShadow,receiveShadow,architectureShadows,coastTextures});
 }
 
-export function processWorld(root, { lambert = true, castShadow = false, receiveShadow = false } = {}) {
+export function processWorld(root, { lambert = true, castShadow = false, receiveShadow = false, architectureShadows = false, coastTextures = null } = {}) {
   root.updateMatrixWorld(true);
+  finishTownSurfaces(root,coastTextures,!lambert);
   const anchors = {
     hotspots: new Map(), zones: new Map(), spawns: new Map(), npcs: new Map(),
     colliders: [], windows: new Map(), sits: new Map(), cams: new Map(),
@@ -182,7 +182,8 @@ export function processWorld(root, { lambert = true, castShadow = false, receive
   root.traverse((o) => {
     if (!o.isMesh) return;
     const kind = (tagOf(o, root) || {}).prefix;
-    o.castShadow = castShadow && kind !== 'water_' && kind !== 'win_';
+    const building = architectureShadows && /^(plaster_wall_|roof_tile_|wood_plank_weathered|metal_corrugated_iron|life_canvas_rope_crust|Bleached driftwood)/.test(o.material?.name || '');
+    o.castShadow = (castShadow || building) && kind !== 'water_' && kind !== 'win_';
     o.receiveShadow = receiveShadow;
   });
 

@@ -308,13 +308,16 @@ function buildMenu() {
 
 export function openMenu() {
   if (isTitleOpen()) return;
+  const explore=$('#menuExplore'), action=callbacks.exploreMenu?.();
+  explore.hidden=!action;
+  if(action){explore.textContent=action.label;explore.onclick=()=>{closeMenu();action.run();};}
   $('#menu').hidden = false;
   $('#menuResume').focus();
 }
 export function closeMenu() { $('#menu').hidden = true; }
 
 // ---------- 标题画面 ----------
-export function showTitle({ title, subtitle, dawn, hasSave, onStart, onContinue, onLetter }) {
+export function showTitle({ title, subtitle, dawn, hasSave, onStart, onContinue, onLetter, onExplore }) {
   closeMenu();
   hideText();
   clearChoices();
@@ -343,6 +346,7 @@ export function showTitle({ title, subtitle, dawn, hasSave, onStart, onContinue,
     add('开始', 'title-btn primary', onStart);
   }
   if (dawn) add('重读那封信', 'title-btn', onLetter);
+  if (onExplore) add('自由漫游', 'title-btn', onExplore);
 
   el.hidden = false;
   $('#topbar').hidden = true;

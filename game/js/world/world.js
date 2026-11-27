@@ -10,7 +10,7 @@ import { realismOn, SkyEnvironment } from './realism.js';
 export const QUALITY = {
   // post：后期处理（泛光 + 色调映射 + 暗角）。full = 全分辨率泛光，half = 半分辨率泛光，none = 只做色调映射
   high:   { label: '高', pixelRatio: 2,   shadows: 'all',    shadowMap: 2048, far: 200, antialias: true,  post: 'full' },
-  medium: { label: '中', pixelRatio: 1.5, shadows: 'player', shadowMap: 1024, far: 140, antialias: true,  post: 'half' },
+  medium: { label: '中', pixelRatio: 1.25, shadows: 'player', shadowMap: 1024, far: 140, antialias: true,  post: 'half' },
   low:    { label: '低', pixelRatio: 1,   shadows: 'none',   shadowMap: 0,    far: 90,  antialias: false, post: 'none' }
 };
 
@@ -58,6 +58,7 @@ export class World {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, this.q.far);
     this.clock = new THREE.Clock();
+    this.shadowElapsed=1;
     this.env = this.realism ? new SkyEnvironment(r, this.scene) : null;
     this.focusDist = null; // 景深对焦距离（米）；null = 不虚化
 
@@ -107,8 +108,8 @@ export class World {
     c.addPass(new OutputPass());
     this.grade = new ShaderPass({
       uniforms: {
-        tDiffuse: { value: null }, vignette: { value: this.realism ? 0.42 : 0.32 }, saturation: { value: 0.96 }, lift: { value: new THREE.Vector3(0.012, 0.012, 0.02) },
-        // 写实调色：对比曲线、暗部偏冷亮部偏暖、胶片颗粒、边缘一点点色散
+        tDiffuse: { value: null }, vignette: { value: this.realism ? 0.29 : 0.32 }, saturation: { value: 0.96 }, lift: { value: new THREE.Vector3(0.012, 0.012, 0.02) },
+        // Display-space edge filtering and grading use the actual render resolution.
         real: { value: this.realism ? 1 : 0 }, time: { value: 0 }, res: { value: new THREE.Vector2(1, 1) }
       },
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
@@ -120,10 +121,20 @@ export class World {
           vec2 d = vUv - 0.5;
           vec4 c = texture2D(tDiffuse, vUv);
           if (real > 0.5) {
-            // 边缘一点点色散（镜头感）
-            vec2 off = d * 0.0022;
-            c.r = texture2D(tDiffuse, vUv + off).r;
-            c.b = texture2D(tDiffuse, vUv - off).b;
+            // The composer renders offscreen. Filter along high-contrast edges
+            // in display space without blurring the whole scene or adding a pass.
+            vec2 px=1./res;
+            vec3 weights=vec3(.299,.587,.114);
+            float nw=dot(texture2D(tDiffuse,vUv+px*vec2(-.6,.6)).rgb,weights);
+            float ne=dot(texture2D(tDiffuse,vUv+px*.6).rgb,weights);
+            float sw=dot(texture2D(tDiffuse,vUv-px*.6).rgb,weights);
+            float se=dot(texture2D(tDiffuse,vUv+px*vec2(.6,-.6)).rgb,weights);
+            float light=max(max(nw,ne),max(sw,se));
+            if(light-min(min(nw,ne),min(sw,se))>max(.045,light*.12)){
+              vec2 axis=vec2(nw+ne-sw-se,sw+nw-se-ne);
+              vec2 offset=clamp(axis/(min(abs(axis.x),abs(axis.y))+.06),-3.,3.)*px*.27;
+              c.rgb=mix(c.rgb,.5*(texture2D(tDiffuse,vUv+offset).rgb+texture2D(tDiffuse,vUv-offset).rgb),.73);
+            }
           }
           float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
           c.rgb = mix(vec3(l), c.rgb, saturation) + lift * (1.0 - l);
@@ -135,7 +146,7 @@ export class World {
             c.rgb += mix(vec3(-0.012, 0.0, 0.022), vec3(0.018, 0.008, -0.014), smoothstep(0.15, 0.75, L));
             // 胶片颗粒（暗部明显、亮部轻）
             float g = hash(vUv * res + fract(time * 7.13) * 91.7) - 0.5;
-            c.rgb += g * 0.045 * (1.0 - L * 0.6);
+            c.rgb += g * 0.004 * (1.0 - L * 0.6);
           }
           c.rgb *= 1.0 - vignette * smoothstep(0.25, 0.85, dot(d, d) * 2.2);
           gl_FragColor = c;
@@ -156,7 +167,13 @@ export class World {
     if (this.composer) {
       this.composer.setPixelRatio(this.renderer.getPixelRatio());
       this.composer.setSize(w, h);
-      if (this.grade) this.grade.uniforms.res.value.set(w, h);
+      if (this.ao) {
+        // Keep the colour image at display resolution. Only the soft contact shadow
+        // buffer needs a lower resolution.
+        const scale = this.renderer.getPixelRatio() * .5;
+        this.ao.setSize(Math.max(1, Math.round(w*scale)), Math.max(1, Math.round(h*scale)));
+      }
+      if (this.grade) this.renderer.getDrawingBufferSize(this.grade.uniforms.res.value);
       if (this.bloom && this.postHalf < 1) {
         const pr = this.renderer.getPixelRatio();
         this.bloom.setSize(Math.round(w * pr * this.postHalf), Math.round(h * pr * this.postHalf));
@@ -189,8 +206,22 @@ export class World {
       this.bokeh.enabled = on;
       if (on) this.bokeh.uniforms.focus.value += (this.focusDist - this.bokeh.uniforms.focus.value) * 0.15;
     }
-    if (this.composer) this.composer.render(dt);
-    else this.renderer.render(this.scene, this.camera);
+    if (this.composer) {
+      const shadows = this.renderer.shadowMap;
+      const auto = shadows.autoUpdate;
+      if (shadows.enabled && auto) {
+        // The first scene pass refreshes the sun shadow. Normal/depth and
+        // postprocessing passes can reuse it until the next frame.
+        shadows.autoUpdate = false;
+        this.shadowElapsed+=dt;
+        if (this.qualityName!=='medium'||this.shadowElapsed>=1/24) {
+          shadows.needsUpdate = true;
+          this.shadowElapsed%=1/24;
+        }
+      }
+      try { this.composer.render(dt); }
+      finally { shadows.autoUpdate = auto; }
+    } else this.renderer.render(this.scene, this.camera);
   }
 
   // 本档画质下，某个物体是否投射阴影

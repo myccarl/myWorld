@@ -957,6 +957,7 @@ body.roaming .hud3d-right { display: flex; }
 .hud-btn.interact { width: 84px; height: 84px; order: 2; display: none; animation: rise 0.25s ease both; }
 body.near .hud-btn.interact { display: block; background: rgba(154, 91, 52, 0.75); border-color: #ffcf8a; }
 .hud-btn.run { width: 60px; height: 60px; margin-bottom: 70px; }
+.hud-btn.ride-brake { width:58px; height:58px; position:absolute; left:0; bottom:5px; }
 .hud-btn.on, .hud-btn:active { background: rgba(255, 207, 138, 0.55); }
 
 /* 自由行走时的提示和选项 */
@@ -1115,3 +1116,28 @@ body.mode-3d .bside3d { pointer-events: auto; }
 /* 3D 片尾：看得见天亮的海湾，字压在下方 */
 body.mode-3d .credits.credits3d { background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.15) 40%, rgba(0, 0, 0, 0.7) 100%); justify-content: flex-end; padding-bottom: max(48px, env(safe-area-inset-bottom)); }
 body.mode-3d .credits.credits3d p { text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6); }
+
+/* 自由漫游的随身物品和载具控制，左侧留出摇杆区域。 */
+#leisure { position:fixed; z-index:3; top:max(14px,env(safe-area-inset-top)); left:max(14px,env(safe-area-inset-left)); max-width:min(390px,calc(100vw - 84px)); pointer-events:none; color:#fff8e9; }
+body:has(#menu:not([hidden])) #leisure { visibility:hidden; }
+.leisure-caption, #leisureOptions { border:1px solid #ded2b449; background:#232923e8; box-shadow:0 3px 14px #10202130; border-radius:8px; }
+.leisure-caption { padding:8px 13px; }
+.leisure-caption strong { display:block; font-family:Georgia,serif; font-size:16px; }
+#mailNote { display:block; width:fit-content; margin-top:4px; padding:4px 9px; border-radius:5px; color:#fff1d5; background:#3d3428ec; font-size:12px; }
+#netSpeech { position:fixed; bottom:10%; left:50%; transform:translateX(-50%); width:max-content; max-width:min(68vw,540px); margin:0; padding:9px 16px; border-radius:6px; background:#19211df0; color:#fff1d5; font-size:15px; line-height:1.45; }
+.leisure-caption span { display:block; margin-top:3px; font-size:12px; line-height:1.45; color:#e0ddcf; }
+.roam-vitals { display:flex; flex-wrap:wrap; gap:4px 9px; margin-top:4px; padding:5px 9px; background:#232923eb; border-radius:6px; }
+.roam-vitals label { display:inline-flex; align-items:center; gap:3px; font-size:12px; }
+.roam-vitals meter { width:30px; height:12px; }
+.roam-vitals output { min-width:2.6ch; font-variant-numeric:tabular-nums; }
+.roam-vitals small { flex-basis:100%; color:#ffdb9a; font-size:12px; }
+.leisure-actions, #flightControls { display:flex; gap:6px; }
+.leisure-actions { margin-top:6px; }
+#leisure button { pointer-events:auto; cursor:pointer; border:1px solid #b5ad976b; background:#29332eeb; color:#fff8e9; border-radius:6px; font:inherit; font-size:13px; min-height:38px; padding:.38em .78em; }
+#leisure button:hover, #leisure button:focus-visible { background:#4f5a46; }
+#leisure button:disabled { opacity:.48; }
+#leisureOptions { pointer-events:auto; margin-top:6px; padding:10px 12px; width:fit-content; max-height:50dvh; overflow:auto; }
+#leisureOptions fieldset { border:0; margin:0 0 9px; padding:0; }
+#leisureOptions legend { font-size:12px; color:#d0c6a4; margin-bottom:5px; }
+#leisureOptions button + button { margin-left:4px; }
+@media (pointer:coarse) { #leisure button { min-height:44px; } }

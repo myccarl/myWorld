@@ -107,12 +107,14 @@ export class Grass {
     this.cap = cfg.cap;
     this.farDiv = world.qualityName === 'high' ? 3 : 4; // 远处画几分之一
     this.uniforms = { uTime: { value: 0 }, uWind: { value: 0.3 }, uCam: { value: new THREE.Vector3() }, uRange: { value: cfg.range } };
+    this.uniforms.uClearPatch = { value: new THREE.Vector4(0,0,-1,-1) };
 
     const mat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, side: THREE.DoubleSide, vertexColors: false });
     mat.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, this.uniforms);
       shader.vertexShader = /* glsl */ `
         uniform float uTime; uniform float uWind; uniform vec3 uCam; uniform float uRange;
+        uniform vec4 uClearPatch;
         varying float vTip; varying vec3 vTint;
       ` + shader.vertexShader
         .replace('#include <begin_vertex>', /* glsl */ `
@@ -131,6 +133,7 @@ export class Grass {
           vec3 windL = normalize(transpose(mat3(instanceMatrix)) * windW);
           transformed += windL * (sway + uWind * 0.25) * t * t * 0.5;
           transformed.y -= abs(sway) * t * t * 0.08;
+          if (all(lessThan(abs(ip.xz-uClearPatch.xy),uClearPatch.zw))) transformed=vec3(0.);
           vTip = t;
           vTint = instanceColor;
         `)

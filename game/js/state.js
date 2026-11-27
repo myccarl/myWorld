@@ -67,6 +67,9 @@ export function savePosition(scene, node, stack, mood) {
   saveProgress();
 }
 export function hasSave() { return !!(progress.scene && progress.node); }
+export function loadRoamVitals() { return read(prefix + ':vitals'); }
+export function saveRoamVitals(vitals) { write(prefix + ':vitals', { ...vitals }); }
+export function clearRoamVitals() { remove(prefix + ':vitals'); }
 export function getPosition() {
   return { scene: progress.scene, node: progress.node, stack: [...(progress.stack || [])], mood: progress.mood || null };
 }

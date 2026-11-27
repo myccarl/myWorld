@@ -16,8 +16,8 @@ export const TIMES = {
     hemiSky: 0xe6d6dc, hemiGround: 0x8a7a73, hemiI: 0.95, fogNear: 22, fogFar: 0.95, sea: 0x2c4a5c, stars: 0
   },
   day: {
-    label: '上午', cloudLit: 0xffffff, cloudShade: 0xa9b6c6, cloudCover: 0.3, gi: 1, skyTop: 0x4f86c6, skyHorizon: 0xc9dbe8, sun: 0xfff1dc, sunI: 1.6, dir: [-20, 30, 14],
-    hemiSky: 0xdfe9f3, hemiGround: 0x8a7a63, hemiI: 1.1, fogNear: 30, fogFar: 1, sea: 0x1d4c60, stars: 0
+    label: '上午', cloudLit: 0xf5f5ef, cloudShade: 0x91a4b4, cloudCover: 0.3, gi: 1, skyTop: 0x477eb8, skyHorizon: 0xb7cedb, sun: 0xfff1dc, sunI: 1.6, dir: [-20, 30, 14],
+    hemiSky: 0xdfe9f3, hemiGround: 0x8a7a63, hemiI: 1.1, fogNear: 30, fogFar: 1.06, sea: 0x275264, stars: 0
   },
   noon: {
     label: '中午', cloudLit: 0xffffff, cloudShade: 0xb5c0cc, cloudCover: 0.25, gi: 1, skyTop: 0x4a88cc, skyHorizon: 0xcfe0ec, sun: 0xffffff, sunI: 1.9, dir: [-6, 40, 5],
@@ -102,7 +102,7 @@ function makeSky(radius) {
       void main() {
         vec3 d = normalize(vDir);
         float h = clamp(d.y, 0.0, 1.0);
-        vec3 c = mix(horizon, top, pow(h, 0.55));
+        vec3 c = mix(horizon, top, pow(h, 0.43));
         if (d.y < 0.0) c = horizon;                       // 地平线以下：和地平线同色（会被海和雾挡住）
         float s = max(dot(d, normalize(sunDir)), 0.0);
         c += sunColor * (pow(s, 64.0) * 0.6 + pow(s, 6.0) * 0.18) * glow;
@@ -112,8 +112,8 @@ function makeSky(radius) {
           vec3 a = texture2D(cloudsDay, uv).rgb;
           float mx = max(max(a.r, a.g), a.b), mn = min(min(a.r, a.g), a.b);
           float white = mn / max(mx, 0.001);                 // 蓝天 ≈ 0.35，云 ≈ 0.9
-          float shapeDay = smoothstep(0.74 - cover * 0.25, 0.92 - cover * 0.12, white);
-          float shadeDay = smoothstep(0.35, 0.95, dot(a, vec3(0.299, 0.587, 0.114)));
+          float shapeDay = smoothstep(0.58 - cover * 0.17, 0.95 - cover * 0.12, white);
+          float shadeDay = smoothstep(0.24, 0.94, sqrt(dot(a, vec3(0.299, 0.587, 0.114))));
           vec3 o = texture2D(cloudsOver, uv).rgb;
           float shadeOver = smoothstep(0.15, 0.85, dot(o, vec3(0.299, 0.587, 0.114)));
           float k = smoothstep(0.6, 0.95, cover);            // 风暴：换成阴天照片
@@ -121,7 +121,7 @@ function makeSky(radius) {
           float shade = mix(shadeDay, shadeOver, k);
           vec3 cc = mix(cloudShade, cloudLit, shade);
           cc += sunColor * pow(s, 8.0) * 0.35 * glow * (1.0 - k); // 靠近太阳的云边亮一点
-          float fadeLow = smoothstep(-0.02, 0.12, d.y);            // 贴近地平线的云淡进雾里
+          float fadeLow = smoothstep(0., 0.095, d.y);             // 贴近地平线的云淡进雾里
           c = mix(c, cc, shape * fadeLow * mix(0.95, 1.0, k));
         }
         gl_FragColor = vec4(c, 1.0);
@@ -175,7 +175,10 @@ export class Lighting {
       c.right = c.top = 22;
       c.near = 1;
       c.far = 120;
-      this.sun.shadow.bias = -0.0008;
+      this.sun.shadow.bias = -0.00022;
+      this.sun.shadow.normalBias = .018;
+      this.shadowRight = new THREE.Vector3();
+      this.shadowUp = new THREE.Vector3();
     }
     this.sky = makeSky(r);
     this.stars = makeStars(r * 0.98);
@@ -283,8 +286,19 @@ export class Lighting {
     this.sky.position.copy(cam);
     this.stars.position.copy(cam);
     if (playerPos) {
-      this.sun.position.copy(playerPos).addScaledVector(this.cur.dir, 40);
-      this.sun.target.position.copy(playerPos);
+      const target=this.sun.target.position.copy(playerPos);
+      if(this.shadowRight){
+        // Snap translation in the shadow camera's two image axes, keeping
+        // doorframes and feet stable as the follow camera travels down a lane.
+        const right=this.shadowRight.set(this.cur.dir.z,0,-this.cur.dir.x).normalize();
+        const up=this.shadowUp.crossVectors(this.cur.dir,right).normalize();
+        const step=44/this.sun.shadow.mapSize.x;
+        for(const axis of [right,up]){
+          const d=playerPos.dot(axis);
+          target.addScaledVector(axis,Math.round(d/step)*step-d);
+        }
+      }
+      this.sun.position.copy(target).addScaledVector(this.cur.dir, 40);
     }
   }
 }

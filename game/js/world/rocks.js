@@ -80,5 +80,6 @@ export async function addRocks({ world, map, ocean }) {
       meshes.push(im);
     }
   });
+  ocean.markRockEdges(spots);
   return { count: spots.length, meshes };
 }

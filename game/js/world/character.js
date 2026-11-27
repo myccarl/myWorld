@@ -329,6 +329,15 @@ export async function loadGltfCharacter(url, { height = 1.7, faceFix = Math.PI, 
   const bones = {};
   model.traverse((o) => { if (o.isBone) bones[o.name.toLowerCase()] = o; });
   const pickBone = (...names) => { for (const n of names) for (const [k, b] of Object.entries(bones)) if (k === n || k.endsWith(n)) return b; return null; };
+  // Neutral ankle height and shoe orientation in the scaled character's rest pose.
+  // Capture these before the mixer starts; both player variants use their own rig.
+  object.updateMatrixWorld(true);
+  const standingFeet={};
+  for(const side of ['l','r']){
+    const foot=bones['foot_'+side];
+    if(foot)standingFeet[side]={height:foot.getWorldPosition(new THREE.Vector3()).y,
+      rotation:foot.getWorldQuaternion(new THREE.Quaternion())};
+  }
   const headBone = pickBone('head');
   const chestBone = pickBone('spine_03', 'spine03', 'chest', 'spine2');
   // 没有动画轨道的骨头：每帧先放回原样，再叠加转头（不然转动会一帧帧累积）
@@ -343,6 +352,7 @@ export async function loadGltfCharacter(url, { height = 1.7, faceFix = Math.PI, 
   const target = new Map(); // action → 目标权重
   const ch = {
     object,
+    standingFeet,
     heading: 0,
     lean: 0,
     pitch: 0,

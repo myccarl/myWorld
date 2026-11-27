@@ -25,6 +25,7 @@ import { Grass, makeTopMask } from './grass.js';
 import { Trees } from './trees.js';
 import { addRocks } from './rocks.js';
 import { audio } from '../audio/audio.js';
+import { FreeRoam } from './free_roam.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -49,9 +50,18 @@ export async function boot3d({ ui, engine, mapName, onProgress }) {
     onProgress,
     lambert: !world.realism, // 写实模式保留物理材质
     castShadow: world.castsShadow('building'),
+    architectureShadows: world.realism && world.qualityName === 'medium',
     receiveShadow: world.q.shadows !== 'none'
   });
   world.scene.add(res.root);
+  if (world.qualityName === 'medium') {
+    const cap = Math.min(4, world.renderer.capabilities.getMaxAnisotropy());
+    res.root.traverse(o => {
+      for (const mat of [].concat(o.material || [])) {
+        if (mat.map && mat.map.anisotropy < cap) { mat.map.anisotropy = cap; mat.map.needsUpdate = true; }
+      }
+    });
+  }
   // 海（R4）：最大的那块 water_ 换成会动的海浪；颜色仍然跟着时段（lighting.setWaters）
   const seaMesh = res.anchors.waters.slice().sort((a, b) => {
     const s = (m) => { m.geometry.computeBoundingBox(); const v = m.geometry.boundingBox.getSize(new THREE.Vector3()); return v.x * v.z; };
@@ -68,7 +78,7 @@ export async function boot3d({ ui, engine, mapName, onProgress }) {
 
   const map = { anchors: res.anchors, zones: res.anchors.zones, colliders: res.anchors.colliders };
   const player = new Player(world.scene, { castShadow: world.castsShadow('player') });
-  player.ground = new Ground(res.walkables);
+  player.ground = new Ground(res.walkables, { staticMap: true });
   const cast = new Cast({
     scene: world.scene,
     ground: player.ground,
@@ -79,7 +89,7 @@ export async function boot3d({ ui, engine, mapName, onProgress }) {
   });
   const follow = new FollowCamera(world.camera, player.object);
   follow.setReal(world.realism);
-  follow.setOccluders(res.walkables);
+  follow.setOccluders(res.walkables, player.ground);
 
   const input = new Input({
     surface: $('#hud3d'),
@@ -98,6 +108,29 @@ export async function boot3d({ ui, engine, mapName, onProgress }) {
   const storm = new Storm3D({ world, player, follow, input, map, cast, ui, sw });
   engine.setSystemOverride('storm', (node, ctx, fallback) => storm.run(node, ctx, fallback));
   const lights = new TownLights({ scene: world.scene, anchors: res.anchors, root: res.root });
+  let leisure = null;
+  sw.startFreeRoam = () => {
+    if (!leisure) {
+      leisure = new FreeRoam({ world, sw, player, follow, input, map, lighting, cast, ocean, lights, grass, audio, ui });
+      rocksReady.then(result => {
+        const obstacles = [];
+        const matrix = new THREE.Matrix4();
+        for (const mesh of result?.meshes || []) {
+          mesh.geometry.computeBoundingBox();
+          const box = mesh.geometry.boundingBox;
+          for (let i = 0; i < mesh.count; i++) {
+            mesh.getMatrixAt(i, matrix);
+            const b = box.clone().applyMatrix4(matrix), centre = b.getCenter(new THREE.Vector3());
+            if (b.max.y > leisure.sea - .12) obstacles.push({ x: centre.x, z: centre.z, radius: Math.max(b.max.x-centre.x, b.max.z-centre.z) });
+          }
+        }
+        leisure.rockObstacles = obstacles;
+      });
+    }
+    leisure.start();
+  };
+  sw.stopFreeRoam = () => leisure?.stop();
+  Object.defineProperty(sw, 'leisure', { get: () => leisure });
   // 烘焙光照（美术样片）：有就挂上，没有就跳过
   if (res.lightmapped && res.lightmapped.size) applyLightmaps(res.lightmapped).then((lm) => {
     lights.setLightmaps(lm);
@@ -198,9 +231,13 @@ export async function boot3d({ ui, engine, mapName, onProgress }) {
     input.update();
     const look = input.takeLook();
     if (look.dx || look.dy) follow.addLook(look.dx, look.dy);
+    if(leisure?.active){leisure.net.pose.reset();leisure.mail.pose.reset();leisure.kite.resetPoses();leisure.beacon.pose.reset();}
     cast.update(dt, player.position);
     const move = sw.autoMove || input.move; // 辅助模式自动走
-    player.update(dt, move, sw.autoMove ? false : input.run, follow.yaw, map.colliders.concat(cast.colliders()));
+    const colliders = map.colliders.concat(cast.colliders());
+    if (!leisure?.update(dt, colliders, look)) {
+      player.update(dt, move, sw.autoMove ? false : input.run, follow.yaw, colliders);
+    }
     // 屋顶：玩家在屋里、镜头却在屋顶上方或屋外时才藏起来；镜头也在屋里时保留（看得到天花板）
     let inside = false;
     const cam = world.camera.position;
@@ -294,7 +331,7 @@ export async function boot3d({ ui, engine, mapName, onProgress }) {
     const p = player.position;
     const moved = Math.hypot(p.x - lastStep.x, p.z - lastStep.z);
     lastStep.copy(p);
-    if (player.grounded && !player.frozen && moved < 1) {
+    if (!leisure?.ride && player.grounded && !player.frozen && moved < 1) {
       walked += moved;
       if (walked > 0.7) { walked = 0; audio.step(inside || p.y > 0.2 ? 'wood' : 'ground'); }
     }
@@ -324,8 +361,11 @@ export async function boot3d({ ui, engine, mapName, onProgress }) {
     const el = document.createElement('div');
     el.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:20;padding:3px 8px;border-radius:6px;background:rgba(0,0,0,.6);color:#9f9;font:12px/1.4 monospace;pointer-events:none';
     document.body.append(el);
-    let frames = 0, acc = 0, worst = 0;
-    world.onUpdate((dt) => {
+    let frames = 0, acc = 0, worst = 0, last = performance.now();
+    document.addEventListener('visibilitychange', () => { last = performance.now(); frames = acc = worst = 0; });
+    world.onUpdate(() => {
+      const now = performance.now(), dt = (now - last) / 1000;
+      last = now;
       frames++; acc += dt; worst = Math.max(worst, dt);
       if (acc >= 1) {
         el.textContent = `${Math.round(frames / acc)} fps · 最慢一帧 ${Math.round(worst * 1000)}ms · 画质 ${world.q.label} · 像素比 ${world.renderer.getPixelRatio()}`;

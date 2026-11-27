@@ -20,6 +20,8 @@ export class FollowCamera {
     this.dist = DIST;
     this.baseDist = null; // 不为空时用它代替默认距离（坐下时拉远）
     this.shake = 0;       // 晃动幅度（米）：风暴里浪拍上来、扛电池时
+    this.bumpAt=-1;
+    this.bumpDirection=new THREE.Vector3();
     this.indoor = false;  // 在屋里：镜头拉近
     this.t = 0;
     this.occluders = [];
@@ -30,7 +32,7 @@ export class FollowCamera {
     this.snap();
   }
 
-  setOccluders(list) { this.occluders = list; }
+  setOccluders(list, ground = null) { this.occluders = list; this.occlusionGround = ground; }
 
   // 打开写实镜头：俯仰角放低，距离拉近
   setReal(on) {
@@ -90,6 +92,10 @@ export class FollowCamera {
     this.blendBack = 1.6; // 用 1.6 秒滑回去
   }
 
+  bicycleBump(direction,strength){
+    this.bumpAt=this.t;this.bumpDirection.copy(direction).multiplyScalar(strength);
+  }
+
   update(dt) {
     this.t += dt;
     if (this.shot) {
@@ -122,7 +128,7 @@ export class FollowCamera {
       const dir = want.sub(this.focus).normalize();
       this.ray.set(this.focus, dir);
       this.ray.far = want0;
-      const hit = this.ray.intersectObjects(this.occluders, false)[0];
+      const hit = this.occlusionGround ? this.occlusionGround.firstHit(this.ray) : this.ray.intersectObjects(this.occluders, false)[0];
       if (hit) allowed = Math.max(MIN_DIST, hit.distance - 0.3);
     }
     // 拉近要快（不能穿墙），退回要慢
@@ -150,5 +156,14 @@ export class FollowCamera {
       this.camera.position.z += Math.sin(this.t * 11.3 + 2) * a;
     }
     this.camera.lookAt(this.lookAtPoint);
+    const age=this.t-this.bumpAt;
+    if(age<.50){
+      const pulse=Math.sin(age*30)*Math.exp(-age*10);
+      const d=this.bumpDirection,front=-d.x*Math.sin(this.yaw)-d.z*Math.cos(this.yaw);
+      const side=d.x*Math.cos(this.yaw)-d.z*Math.sin(this.yaw);
+      this.camera.rotateX(-front*.061*pulse);
+      this.camera.rotateY(side*.035*pulse);
+      this.camera.rotateZ((side*.034+front*.012)*pulse);
+    }
   }
 }

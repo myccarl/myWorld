@@ -18,7 +18,7 @@ const {MeshoptDecoder}=await import('three/addons/libs/meshopt_decoder.module.js
 const {processWorld}=await import(file('game/js/world/loader.js')), {Ground}=await import(file('game/js/world/ground.js')), {Player}=await import(file('game/js/world/player.js'));
 const b=readFileSync(process.argv[2]||'game/assets/town.glb');
 const g=await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'');
-const w=processWorld(g.scene,{lambert:false}), p=new Player(new THREE.Scene());p.ground=new Ground(w.walkables);
+const w=processWorld(g.scene,{lambert:false}), p=new Player(new THREE.Scene());p.ground=new Ground(w.walkables,{staticMap:true});
 let count=0;
 function at(x,z,y=.025){p.placeAt(new THREE.Vector3(x,y,z))}
 function walk(x,z){
@@ -39,7 +39,7 @@ const region=process.argv[3]||'street';
 const extents=new Map(w.walkables.map(o=>[o,new THREE.Box3().setFromObject(o)]));
 function focus(bounds){
  const [x0,z0,x1,z1]=bounds;
- p.ground=new Ground(w.walkables.filter(o=>{const b=extents.get(o);return b.max.x>x0-2&&b.min.x<x1+2&&b.max.z>z0-2&&b.min.z<z1+2;}));
+ p.ground=new Ground(w.walkables.filter(o=>{const b=extents.get(o);return b.max.x>x0-2&&b.min.x<x1+2&&b.max.z>z0-2&&b.min.z<z1+2;}),{staticMap:true});
 }
 function near(name){
  const o=g.scene.getObjectByName(name);if(!o)throw Error('missing '+name);

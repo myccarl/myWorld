@@ -24,9 +24,42 @@
     <div class="hud3d-right">
       <button id="interactBtn3d" class="hud-btn interact" type="button">交互</button>
       <button id="runBtn3d" class="hud-btn run" type="button">跑</button>
+      <button id="rideBrake" class="hud-btn ride-brake" type="button" hidden>刹车</button>
     </div>
   </div>
   <div id="loadBar3d" class="load-bar" hidden></div>
+  <section id="leisure" aria-label="自由漫游" hidden>
+    <div class="leisure-caption"><strong id="leisureStatus"></strong><span id="leisureDetail"></span></div>
+    <span id="mailNote" hidden></span>
+    <p id="netSpeech" role="status" hidden></p>
+    <div class="roam-vitals" aria-label="身体状态">
+      <label>饱腹 <meter id="roamFood" min="0" max="100" low="25" high="45" optimum="90"></meter><output></output></label>
+      <label>清洁 <meter id="roamClean" min="0" max="100" low="20" high="40" optimum="90"></meter><output></output></label>
+      <label>健康 <meter id="roamHealth" min="0" max="100" low="30" high="50" optimum="90"></meter><output></output></label>
+      <label>水分 <meter id="roamWater" min="0" max="100" low="22" high="40" optimum="90"></meter><output></output></label>
+      <label>疲劳 <meter id="roamFatigue" min="0" max="100" low="60" high="78" optimum="0"></meter><output></output></label>
+      <small id="roamNeedsHint" role="status" hidden></small>
+    </div>
+    <div class="leisure-actions">
+      <button data-do="menu" type="button" aria-expanded="false" aria-controls="leisureOptions">行囊 · 地点</button>
+      <button id="mailOffer" data-do="mail" type="button" hidden>接过信</button>
+      <div id="flightControls" hidden><button data-do="heightUp" type="button">升高</button><button data-do="heightDown" type="button">降低</button></div>
+    </div>
+    <div id="leisureOptions" hidden>
+      <fieldset><legend>随身物品</legend>
+        <button type="button" data-onfoot data-do="water">喝水</button><button type="button" data-onfoot data-do="coffee">喝咖啡</button><button type="button" data-onfoot data-do="smoke">抽烟</button>
+      </fieldset>
+      <fieldset><legend>前往停放点</legend>
+        <button type="button" data-onfoot data-do="bike">自行车</button><button type="button" data-onfoot data-do="boat">手划艇</button><button type="button" data-onfoot data-do="balloon">热气球</button>
+      </fieldset>
+      <fieldset><legend>吃饭、洗澡与休息</legend>
+        <button type="button" data-onfoot data-do="meal">去旧街杂货店</button><button type="button" data-onfoot data-do="shower">去小屋淋浴间</button>
+        <button type="button" data-onfoot data-do="sleep">回屋睡觉</button>
+      </fieldset>
+      <button type="button" data-do="wait">等到下一时段</button>
+      <button type="button" data-do="return" hidden>返回停放点并下车</button>
+    </div>
+  </section>
 
   <div id="app" data-tone="dark">
     <div id="bgA" class="bg"></div>
@@ -71,6 +104,7 @@
         <button id="menuMode" type="button"></button>
         <button id="menuShake" type="button"></button>
         <button id="menuSound" type="button"></button>
+        <button id="menuExplore" type="button" hidden>进入自由漫游</button>
         <button id="menuTitle" type="button">回到标题</button>
         <button id="menuClear" type="button" class="danger"></button>
       </div>

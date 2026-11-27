@@ -76,7 +76,7 @@ export class Player {
   }
 
   // move: {x, y}，cameraYaw：镜头水平角，colliders：THREE.Box3[]
-  update(dt, move, run, cameraYaw, colliders) {
+  update(dt, move, run, cameraYaw, colliders, paceLimit = Infinity) {
     if (this.frozen) { // 坐着：位置固定，只播动作
       this.ch.heading = this.heading;
       this.ch.play(this.forcedAnim || 'idle');
@@ -105,7 +105,7 @@ export class Player {
       // 目标速度：推一点慢走，推到底小跑，按住跑键快跑
       let target = run ? RUN : mag < WALK_ZONE ? WALK * Math.max(0.35, mag / WALK_ZONE) : WALK + (JOG - WALK) * Math.min(1, (mag - WALK_ZONE) / 0.3);
       if (this.carry) target = Math.min(target, WALK);
-      target *= this.speedMul || 1;
+      target = Math.min(target * (this.speedMul || 1), paceLimit);
 
       const want = Math.atan2(-dx, -dz);
       let diff = want - this.heading;
@@ -199,7 +199,9 @@ export class Player {
     const rise = g.y - p.y;
     if (rise > STEP_UP + 1e-3) return false;                        // 太高，跨不上去
     // 太陡，爬不上去：只要是往上走就挡（不能设"每帧升高超过多少才挡"，否则慢慢推摇杆能一点点蹭上去）
-    if (rise > 1e-3 && g.ny < MAX_SLOPE_NY && (mx || mz)) return false;
+    // Exported 45-degree kerb bevels can differ from cos(45°) by a few
+    // millionths after float32 transforms. Treat the boundary as inclusive.
+    if (rise > 1e-3 && g.ny < MAX_SLOPE_NY-1e-5 && (mx || mz)) return false;
 
     if (rise >= -SNAP_DOWN && this.grounded) {
       c.y = g.y; // 贴地（含上台阶、走下坡）

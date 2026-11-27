@@ -15,6 +15,7 @@ import * as THREE from 'three';
 
 const ON = new THREE.Color(0xffc27a);
 const GLASS = new THREE.Color(0x3a4250);
+const SASH_GLASS = new THREE.Color(0x849796);
 const LIT_GLASS = new THREE.Color(0xffe2b0);
 const FADE = 0.6; // 每扇窗亮起 / 熄灭用多久（秒）
 
@@ -210,7 +211,7 @@ export class TownLights {
       const step = dt / FADE;
       w.level = w.target > w.level ? Math.min(w.target, w.level + step) : Math.max(w.target, w.level - step);
       const lv = w.hidden ? 0 : w.level;
-      w.mat.color.copy(GLASS).lerp(LIT_GLASS, lv);
+      w.mat.color.copy(w.mat.name==='Sash glass'?SASH_GLASS:GLASS).lerp(LIT_GLASS, lv);
       if (w.mat.emissive) w.mat.emissive.copy(ON).multiplyScalar(lv * 0.9);
       w.glow.material.opacity = lv * 0.85;
       w.glow.visible = lv > 0.01;

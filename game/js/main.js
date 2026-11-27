@@ -14,6 +14,39 @@ import { meta } from '../story/index.js';
 const RELEASE = document.documentElement.dataset.release === '1';
 const AUTO_CONTINUE = 'fengting:autoContinue';
 let world3d = null;
+let exploring = false;
+let storyReturn = null;
+
+async function explore() {
+  if (exploring) return;
+  exploring = true;
+  const buttons = [...document.querySelectorAll('#titleButtons button')];
+  buttons.forEach(b => b.disabled = true);
+  try {
+    if (!world3d) await start3d();
+    if (!world3d) { exploring = false; return; }
+    ui.hideTitle();
+    ui.setNotebookVisible(false);
+    world3d.startFreeRoam();
+  } finally {
+    buttons.forEach(b => b.disabled = false);
+  }
+}
+
+function exploreMenu() {
+  if (exploring && storyReturn) return { label:'回到剧情', run() {
+    const last=storyReturn;
+    world3d.stopFreeRoam(); exploring=false; storyReturn=null;
+    continueGame();
+    world3d.player.placeAt(last.position);world3d.player.heading=last.heading;
+    world3d.follow.yaw=last.yaw;world3d.follow.snap();
+  }};
+  if (!exploring && world3d?.roam && !world3d.sitting) return { label:'进入自由漫游', run() {
+    storyReturn={position:world3d.player.position.clone(),heading:world3d.player.heading,yaw:world3d.follow.yaw};
+    engine.stop(); explore();
+  }};
+  return null;
+}
 
 function continueGame() {
   const p = state.getPosition();
@@ -22,6 +55,9 @@ function continueGame() {
 }
 
 function showTitle() {
+  world3d?.stopFreeRoam();
+  exploring = false;
+  storyReturn = null;
   engine.stop();
   audio.onScene(null, state.isCompleted() ? 'daybreak' : 'night');
   const dawn = state.isCompleted();
@@ -40,6 +76,7 @@ function showTitle() {
       engine.startScene(engine.firstSceneId());
     },
     onContinue: continueGame,
+    onExplore: explore,
     async onLetter() {
       ui.hideTitle();
       await engine.runStandalone('letter');
@@ -50,6 +87,13 @@ function showTitle() {
 
 // 切换 3D / 文字模式：刷新页面；正在玩的话，刷新后直接继续
 function onModeChange() {
+  if (exploring) {
+    const url = new URL(location.href);
+    url.searchParams.delete('explore');
+    url.searchParams.delete('mode');
+    location.replace(url);
+    return;
+  }
   const playing = document.querySelector('#title').hidden;
   try { if (playing && state.hasSave()) sessionStorage.setItem(AUTO_CONTINUE, '1'); } catch { /* 忽略 */ }
   location.reload();
@@ -98,7 +142,10 @@ async function boot() {
 
   ui.init({
     onTitle: showTitle,
+    exploreMenu,
     onClear() {
+      world3d?.stopFreeRoam();
+      state.clearRoamVitals();
       state.clearProgress();
       showTitle();
     },
@@ -117,6 +164,10 @@ async function boot() {
 
   showTitle();
 
+  if (params.has('explore')) {
+    await explore();
+    return;
+  }
   const jump = RELEASE ? null : params.get('jump'); // 发布版不让跳场景（朋友不会误点进结尾）
   if (jump) {
     const [sceneId, nodeId] = jump.split('/');

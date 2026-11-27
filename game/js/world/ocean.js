@@ -18,6 +18,10 @@ const WAVES = [
   [0.2, 1.0, 5.2, 0.22, 1.25],
   [-0.4, 0.9, 3.1, 0.18, 1.4]
 ];
+const spectrum=WAVES.map(([x,z,length,steep,speed],i)=>{
+  const k=2*Math.PI/length, n=Math.hypot(x,z);
+  return {x:x/n,z:z/n,k,amp:steep/k,omega:k*Math.sqrt(9.8/k)*speed,seed:i*1.73};
+});
 const SCALE = { storm: 1.05, dusk: 0.6, night: 0.45, daybreak: 0.38, dawn: 0.42 };
 
 export class Ocean {
@@ -42,9 +46,9 @@ export class Ocean {
     };
     this.bakeHeight(walkables);
 
-    const mat = new THREE.MeshStandardMaterial({ color: 0x2c5a72, roughness: 0.08, metalness: 0.0, envMapIntensity: 0.75 });
+    const mat = new THREE.MeshStandardMaterial({ color: 0x2c5a72, roughness: 0.26, metalness: 0.0, envMapIntensity: 0.39 });
     mat.onBeforeCompile = (shader) => this.patch(shader);
-    mat.customProgramCacheKey = () => 'ocean-v1';
+    mat.customProgramCacheKey = () => 'coastal-water-v2';
     this.material = mat;
 
     // 近处的细网格
@@ -141,96 +145,122 @@ export class Ocean {
     this.uniforms.uHBox.value.set(minX, minZ, sx, sz);
   }
 
-  patch(shader) {
-    Object.assign(shader.uniforms, this.uniforms);
-    const waves = WAVES.map(([dx, dz, L, st, sp]) => {
-      const len = Math.hypot(dx, dz);
-      return `vec4(${(dx / len).toFixed(4)}, ${(dz / len).toFixed(4)}, ${L.toFixed(3)}, ${st.toFixed(3)}), ${sp.toFixed(3)}`;
-    });
-    const common = /* glsl */ `
-      uniform float uTime; uniform float uWave; uniform vec2 uCenter; uniform float uLevel;
-      uniform sampler2D uHeight; uniform vec4 uHBox; uniform vec2 uHRange; uniform vec3 uDeep; uniform float uDetail;
-      varying vec3 vOceanW; varying float vCrest;
-      float oceanDepth(vec2 xz) {
-        vec2 uv = (xz - uHBox.xy) / uHBox.zw;
-        if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 50.0;
-        vec2 t = texture2D(uHeight, vec2(uv.x, 1.0 - uv.y)).rg;
-        float byDist = t.g * 25.0 * 0.28;                  // 离岸越远越深（坡度约 1:3.5）
-        if (t.r <= 0.001) return max(byDist, 0.0);         // 没有地面（海）：按离岸距离
-        float byGround = uLevel - (uHRange.x + t.r * uHRange.y);
-        // 地面比海面高：这里的水一定在码头、栈道底下（不然看不见水），按离岸距离算，不是岸边
-        return byGround > 0.0 ? max(byGround, byDist) : max(byDist, 0.8);
-      }
-    `;
-    shader.vertexShader = common + shader.vertexShader
-      .replace('#include <begin_vertex>', /* glsl */ `
-        vec4 ow = modelMatrix * vec4(position, 1.0);
-        float fade = 1.0 - smoothstep(35.0, 58.0, length(ow.xz - uCenter));
-        float dShore = oceanDepth(ow.xz);
-        float shallow = smoothstep(0.0, 3.0, dShore);     // 贴近岸边浪变小（浪不爬上沙滩）
-        vec3 disp = vec3(0.0);
-        vec3 tng = vec3(1.0, 0.0, 0.0), btg = vec3(0.0, 0.0, 1.0);
-        float crest = 0.0;
-        ${WAVES.map((_, i) => `{
-          vec4 wv = ${waves[i].split('), ')[0]});
-          float sp = ${waves[i].split('), ')[1]};
-          float k = 6.28318 / wv.z;
-          float c = sqrt(9.8 / k) * sp;
-          float a = wv.w / k * uWave * fade * mix(0.25, 1.0, shallow);
-          float f = k * (dot(wv.xy, ow.xz) - c * uTime);
-          disp += vec3(wv.x * a * cos(f), a * sin(f), wv.y * a * cos(f));
-          tng += vec3(-wv.x * wv.x * k * a * sin(f), wv.x * k * a * cos(f), -wv.x * wv.y * k * a * sin(f));
-          btg += vec3(-wv.x * wv.y * k * a * sin(f), wv.y * k * a * cos(f), -wv.y * wv.y * k * a * sin(f));
-          crest += max(0.0, sin(f)) * wv.w * uWave * fade;
-        }`).join('\n')}
-        vec3 transformed = position + disp;
-        vCrest = crest;
-        vOceanW = (modelMatrix * vec4(transformed, 1.0)).xyz;
-      `)
-      .replace('#include <beginnormal_vertex>', /* glsl */ `
-        vec3 objectNormal = vec3(0.0, 1.0, 0.0); // 片元里用导数重算
-      `);
-    shader.fragmentShader = common + shader.fragmentShader
-      .replace('#include <color_fragment>', /* glsl */ `
-        #include <color_fragment>
-        float depthHere = oceanDepth(vOceanW.xz);
-        // 浅水：颜色变浅、偏青
-        float shallowC = 1.0 - smoothstep(0.2, 3.2, depthHere);
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.09, 0.27, 0.26), shallowC * 0.7);
-        // 岸边一道道往岸上推的白浪
-        float band = sin(depthHere * 7.0 + uTime * 1.6 + sin(vOceanW.x * 0.15) * 1.5);
-        // 白浪不是一整条：用两层波纹把它打碎
-        float brk = 0.5 + 0.5 * sin(vOceanW.x * 1.7 + sin(vOceanW.z * 1.3 + uTime * 0.7) * 2.0) * sin(vOceanW.z * 2.1 - uTime * 0.5);
-        float shoreFoam = (1.0 - smoothstep(0.0, 1.1, depthHere)) * smoothstep(0.35, 0.95, band) * smoothstep(0.15, 0.6, brk);
-        shoreFoam = max(shoreFoam, 1.0 - smoothstep(0.0, 0.18, depthHere)); // 贴岸一条白边
-        // 浪尖白沫（风暴时多）
-        float crestFoam = smoothstep(0.42, 0.62, vCrest) * smoothstep(0.55, 1.0, uWave) * smoothstep(0.35, 0.8, brk) * 0.8;
-        float foam = clamp(shoreFoam + crestFoam, 0.0, 1.0);
-        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.94, 0.95), foam);
-      `)
-      .replace('#include <roughnessmap_fragment>', /* glsl */ `
-        #include <roughnessmap_fragment>
-        roughnessFactor = mix(roughnessFactor, 0.85, foam);
-      `)
-      .replace('#include <normal_fragment_begin>', /* glsl */ `
-        // 波面法线：用世界坐标的屏幕导数求，再叠两层细碎波纹
-        vec3 wdx = dFdx(vOceanW), wdy = dFdy(vOceanW);
-        vec3 nW = normalize(cross(wdy, wdx));
-        if (nW.y < 0.0) nW = -nW;
-        if (uDetail > 0.5) {
-          vec2 p1 = vOceanW.xz * 0.9 + vec2(uTime * 0.35, uTime * 0.2);
-          vec2 p2 = vOceanW.xz * 2.3 - vec2(uTime * 0.25, -uTime * 0.4);
-          vec2 r = vec2(sin(p1.x + sin(p1.y * 1.3)) + sin(p2.y * 1.7 + sin(p2.x)), cos(p1.y + sin(p1.x * 1.1)) + cos(p2.x * 1.9 + sin(p2.y)));
-          float dist = length(vOceanW - cameraPosition);
-          nW = normalize(nW + vec3(r.x, 0.0, r.y) * 0.06 * (1.0 - smoothstep(20.0, 120.0, dist)));
+  markRockEdges(spots) {
+    const s=this.shore;
+    if(!s)return;
+    for(const {p,size,rot} of spots){
+      const cx=(p.x-s.minX)*s.W/s.sx,cy=(1-(p.z-s.minZ)/s.sz)*s.H;
+      const r=size*.5+1, dx=Math.ceil(r*s.W/s.sx),dy=Math.ceil(r*s.H/s.sz);
+      const co=Math.cos(rot),si=Math.sin(rot);
+      for(let y=Math.max(0,Math.floor(cy)-dy);y<=Math.min(s.H-1,Math.ceil(cy)+dy);y++){
+        for(let x=Math.max(0,Math.floor(cx)-dx);x<=Math.min(s.W-1,Math.ceil(cx)+dx);x++){
+          const ax=(x+.5-cx)*s.sx/s.W,az=(cy-y-.5)*s.sz/s.H;
+          const edge=Math.hypot(ax*co-az*si,(ax*si+az*co)*1.34)-size*.37;
+          const i=4*(y*s.W+x)+2;
+          s.px[i]=Math.max(s.px[i],Math.round(255*(1-THREE.MathUtils.smoothstep(Math.abs(edge),.05,.78))));
         }
-        float faceDirection = gl_FrontFacing ? 1.0 : -1.0;
-        vec3 normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
-        vec3 nonPerturbedNormal = normal;
-      `);
+      }
+    }
+    this.heightTex.needsUpdate=true;
+  }
+
+  patch(shader) {
+    Object.assign(shader.uniforms,this.uniforms);
+    const common=`
+      uniform float uTime,uWave,uLevel,uDetail;
+      uniform vec2 uCenter,uHRange;
+      uniform vec4 uHBox;
+      uniform sampler2D uHeight;
+      varying vec3 vOceanW,vWaveNormal;
+      varying float vCrest;
+      vec2 coastSample(vec2 xz){
+        vec2 uv=(xz-uHBox.xy)/uHBox.zw;
+        if(any(lessThan(uv,vec2(0.)))||any(greaterThan(uv,vec2(1.))))return vec2(50.,0.);
+        vec3 t=texture2D(uHeight,vec2(uv.x,1.-uv.y)).rgb;
+        float dist=t.g*7.,ground=uLevel-(uHRange.x+t.r*uHRange.y);
+        return vec2(t.r<=.001?dist:max(dist,ground>0.?ground:.8),t.b);
+      }\n`;
+    shader.vertexShader=common+shader.vertexShader.replace('#include <begin_vertex>',`
+      vec4 ow=modelMatrix*vec4(position,1.);
+      float fade=1.-smoothstep(35.,58.,length(ow.xz-uCenter));
+      float amplitude=uWave*fade*mix(.25,1.,smoothstep(0.,3.,coastSample(ow.xz).x));
+      vec3 disp=vec3(0.), tangent=vec3(1.,0.,0.), bitangent=vec3(0.,0.,1.);
+      float crest=0.;
+      ${spectrum.map(w=>`{
+        vec2 dir=vec2(${w.x.toFixed(6)},${w.z.toFixed(6)});
+        float k=${w.k.toFixed(6)},a=amplitude*${w.amp.toFixed(6)};
+        float warp=dot(ow.xz,vec2(.064,-.037))+${w.seed.toFixed(4)};
+        float phase=k*dot(dir,ow.xz)-${w.omega.toFixed(6)}*uTime+.69*sin(warp);
+        float sn=sin(phase),cs=cos(phase);
+        vec2 grad=k*dir+.69*cos(warp)*vec2(.064,-.037);
+        disp+=a*vec3(dir.x*cs,sn,dir.y*cs);
+        vec3 derivative=a*vec3(-dir.x*sn,cs,-dir.y*sn);
+        tangent+=derivative*grad.x;bitangent+=derivative*grad.y;
+        crest+=max(0.,sn)*k*a;
+      }`).join('\n')}
+      vec3 transformed=position+disp;
+      vWaveNormal=normalize(cross(bitangent,tangent));vCrest=crest;
+      vOceanW=(modelMatrix*vec4(transformed,1.)).xyz;
+    `);
+    shader.fragmentShader=common+shader.fragmentShader
+      .replace('#include <color_fragment>',`
+        #include <color_fragment>
+        vec2 coast=coastSample(vOceanW.xz);
+        float depthHere=coast.x,offshore=smoothstep(10.,90.,length(cameraPosition-vOceanW));
+        float shallow=1.-smoothstep(0.,3.2,depthHere);
+        diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*.57+vec3(.035,.108,.084),shallow*.8);
+        vec2 shoreP=vOceanW.xz;
+        float band=sin(depthHere*9.+uTime*1.75+.9*sin(shoreP.x*.69)+.45*sin(shoreP.y*1.9));
+        float breakup=.5+.5*sin(shoreP.x*2.3+sin(shoreP.y*1.9+uTime*.6)*2.)*sin(shoreP.y*2.7-uTime*.6);
+        float lace=smoothstep(.36,.85,breakup);
+        float shoreFoam=(1.-smoothstep(.02,1.15,depthHere))*smoothstep(.27,.94,band)*(.22+.72*lace);
+        shoreFoam=max(shoreFoam,coast.y*smoothstep(-.4,.80,band)*(.23+.70*lace));
+        float crestFoam=smoothstep(.31,.60,vCrest)*smoothstep(.50,1.,uWave)*lace*.8;
+        float foam=clamp(shoreFoam+crestFoam,0.,1.);
+        diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.72,.78,.77),foam);
+      `)
+      .replace('#include <roughnessmap_fragment>',`
+        #include <roughnessmap_fragment>
+        roughnessFactor=mix(roughnessFactor+.10*offshore,.85,foam);`)
+      .replace('#include <normal_fragment_begin>',`
+        vec3 nW=normalize(mix(vWaveNormal,vec3(0.,1.,0.),.10+.55*offshore));
+        if(uDetail>.5){
+          vec2 p=vOceanW.xz;
+          float warp=sin(dot(p,vec2(.41,.26))-.36*uTime);
+          float chop=sin(dot(p,vec2(2.9,5.1))-.97*uTime+2.*warp);
+          float ripple=sin(dot(p,vec2(-4.8,8.2))+1.51*uTime+1.9*warp);
+          float capillary=sin(dot(p,vec2(11.4,14.3))-2.21*uTime+1.4*chop);
+          vec2 detail=vec2(.46,.83)*chop+vec2(-.48,.79)*ripple*.58+vec2(.67,.72)*capillary*.33;
+          nW=normalize(nW+vec3(detail.x,0.,detail.y)*(.065+.019*warp)*(1.-offshore));
+        }
+        float faceDirection=gl_FrontFacing?1.:-1.;
+        vec3 normal=normalize((viewMatrix*vec4(nW,0.)).xyz);
+        vec3 nonPerturbedNormal=normal;`);
   }
 
   setTime(name) { this.waveTarget = SCALE[name] ?? 0.4; }
+
+  // Rowboats and surfacing animals use the same travelling waves as the sea mesh.
+  surfaceY(x,z) {
+    const s=this.shore, u=this.uniforms;
+    let depth=50;
+    if (s) {
+      const ix=Math.floor((x-s.minX)/s.sx*s.W), iz=Math.floor((1-(z-s.minZ)/s.sz)*s.H);
+      if (ix>=0 && ix<s.W && iz>=0 && iz<s.H) {
+        const i=4*(iz*s.W+ix), dist=s.px[i+1]/255*7;
+        const ground=this.level-s.lo-s.px[i]/255*s.range;
+        depth=s.px[i]===0?dist:Math.max(dist,ground>0?ground:.8);
+      }
+    }
+    const fade=1-THREE.MathUtils.smoothstep(Math.hypot(x-u.uCenter.value.x,z-u.uCenter.value.y),35,58);
+    const amp=u.uWave.value*fade*(.25+.75*THREE.MathUtils.smoothstep(depth,0,3));
+    let y=this.level;
+    for (const w of spectrum) {
+      const phase=w.k*(w.x*x+w.z*z)-w.omega*u.uTime.value+.69*Math.sin(x*.064-z*.037+w.seed);
+      y+=amp*w.amp*Math.sin(phase);
+    }
+    return y;
+  }
 
   update(dt, camera) {
     this.uniforms.uTime.value += dt;
